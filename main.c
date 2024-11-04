@@ -8,16 +8,18 @@
 #define PORT 80
 #define METHOD 0
 #define PATH 1
-#define ALLOWED_FILES 2
+#define ALLOWED_FILES 3
 
 const char *allowed_files[ALLOWED_FILES] = {
 	"/index.html",
+	"/login.html",
 	"/404.html"
 };
 
 struct HttpReq{
 	char *method;
 	char *path;
+	char *body;
 };
 
 int is_allowed_path(const char *path){
@@ -55,8 +57,24 @@ char *file_404(){
 	}
 
 	response[file_size + strlen(http_404_header)] = '\0';
+	
+	printf("\n\nResponse: %s\n\n", response);
 
 	return response;
+}
+
+char *post_handler(char *data){
+	if(data == NULL){
+		return file_404();	
+	}
+	
+	char username[100];
+	char password[100];
+	sscanf(data, "username=%99[^&]&password=%99s", username, password);
+
+	char response[1024];
+	snprintf(response, sizeof(response), "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nUsername: %s\nPassword: %s", username, password);
+	return strdup(response);
 }
 
 char *get_handler(char *path){
@@ -170,10 +188,19 @@ int main(){
 		}
 		buffer[bytes_read] = '\0';
 		printf("Request: \n%s\n", buffer);
-		printf("Request: \n%zd\n", bytes_read);
+		
+		struct HttpReq httpReq = {0};
+
+		char *body_start = strstr(buffer, "\r\n\r\n");
+		if(body_start != NULL){
+			body_start += 4;
+			httpReq.body = body_start;	
+		}
+		else{
+			httpReq.body = NULL;	
+		}
 
 		char *line = strtok(buffer, "\r\n");
-		struct HttpReq httpReq = {0};
 		int cnt = 0;
 		char *token = strtok(line, " ");
 		while(line != NULL && cnt < PATH+1){
@@ -186,6 +213,9 @@ int main(){
 			cnt++;
 			token = strtok(NULL, " ");
 		}
+		printf("Method: %s\n", httpReq.method);
+		printf("Path: %s\n", httpReq.path);
+		printf("Body: %s\n", httpReq.body);
 
 		char *response = NULL;
 		if(httpReq.method == NULL || httpReq.path == NULL){
@@ -194,13 +224,11 @@ int main(){
 			continue;
 		}
 
-		printf("method: %s\n", httpReq.method);
-		printf("path: %s\n", httpReq.path);
 		if(strcmp(httpReq.method, "GET") == 0){
 			response = get_handler(httpReq.path);
 		}
 		else if(strcmp(httpReq.method, "POST") == 0){
-			printf("POST request!!!");
+			response = post_handler(httpReq.body);
 		}
 		else{
 			printf("NO request!!!");
