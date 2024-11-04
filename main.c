@@ -8,25 +8,45 @@
 #define PORT 80
 #define METHOD 0
 #define PATH 1
+#define ALLOWED_FILES 2
+
+const char *allowed_files[ALLOWED_FILES] = {
+	"/index.html",
+	"404.html"
+};
 
 struct HttpReq{
 	char *method;
 	char *path;
 };
 
+int is_allowed_path(const char *path){
+	for(int i = 0; i < ALLOWED_FILES; i++){
+		if(strcmp(path, allowed_files[i]) == 0){
+			return 1;	
+		}
+	}
+	return 0;
+}
+
 char *file_404(){
+	const char *http_404_header = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n";
+
 	FILE *file_404;
 	file_404 = fopen("./static/404.html", "r");
 
 	fseek(file_404, 0, SEEK_END);
 	long file_size = ftell(file_404);
 	fseek(file_404, 0, SEEK_SET);
-	char *response = (char *)malloc(file_size);
+	char *response = (char *)malloc(file_size + strlen(http_404_header) + 1);
 	if(response == NULL){
 		perror("Failed to allocate memory");
 		return NULL;
 	}
-	size_t bytes_read = fread(response, 1, file_size, file_404);
+
+	memcpy(response, http_404_header, strlen(http_404_header));
+
+	size_t bytes_read = fread(response + strlen(http_404_header), 1, file_size, file_404);
 	if(bytes_read != file_size){
 		perror("Failed to read file");
 		free(response);
@@ -34,11 +54,20 @@ char *file_404(){
 		return NULL;
 	}
 
+	response[file_size + strlen(http_404_header)] = '\0';
+
 	return response;
 }
 
 char *get_handler(char *path){
+	const char *http_ok_header = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
+
 	char *response = NULL;
+
+	if(!is_allowed_path(path)){
+		printf("Access denied!\n");
+		return file_404();
+	}
 
 	const char *base_path = "./static/";
 
@@ -47,8 +76,7 @@ char *get_handler(char *path){
 	char *full_path = (char *)malloc(full_path_size);
 	if(full_path == NULL){
 		perror("Failed to allocate memory");
-		response = file_404();
-		return response;
+		return file_404();
 	}
 
 	snprintf(full_path, full_path_size, "%s%s", base_path, path);
@@ -58,35 +86,37 @@ char *get_handler(char *path){
 	if(file == NULL){
 		perror("Failed to open file");	
 		free(full_path);
-		response = file_404();
-		return response;
+		return file_404();
 	}
 
 	fseek(file, 0, SEEK_END);
 	long file_size = ftell(file);
 	fseek(file, 0, SEEK_SET);
 
-	response = (char *)malloc(file_size);
+	response = (char *)malloc(file_size + strlen(http_ok_header) + 1);
 	if(response == NULL){
 		perror("Failed to allocate memory");
 		free(full_path);
 		fclose(file);
-		response = file_404();
-		return response;
+		return file_404();
 	}
-	size_t bytes_read = fread(response, 1, file_size, file);
+	
+	memcpy(response, http_ok_header, strlen(http_ok_header));
+
+	size_t bytes_read = fread(response + strlen(http_ok_header), 1, file_size, file);
 	if(bytes_read != file_size){
 		perror("Failed to read file");
 		free(response);
 		fclose(file);
-		response = file_404();
-		return response;
+		return file_404();
 	}
 
-	response[file_size] = '\0';
+	response[file_size + strlen(http_ok_header)] = '\0';
 
 	fclose(file);
 	free(full_path);
+
+	printf("\n\nResponse: %s\n\n", response);
 
 	return response;
 }
@@ -161,6 +191,7 @@ int main(){
 		if(httpReq.method == NULL || httpReq.path == NULL){
 			perror("Error: Invalid request format\n");
 			response = file_404();
+			continue;
 		}
 
 		printf("method: %s\n", httpReq.method);
