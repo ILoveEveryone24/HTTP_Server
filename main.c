@@ -12,7 +12,7 @@
 
 const char *allowed_files[ALLOWED_FILES] = {
 	"/index.html",
-	"404.html"
+	"/404.html"
 };
 
 struct HttpReq{
